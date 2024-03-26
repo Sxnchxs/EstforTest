@@ -74,22 +74,33 @@ class Client:
         a = self.w3.eth.contract(
             address=Web3.to_checksum_address(contract_address),
             abi=Client.default_abi
-        ).functions.startActions(playerID, _queuedActions, _queuedStatus).build_transaction({
-            'from': self.address,
-            'gas': int(self.w3.eth.get_block('latest')["gasUsed"]),
-            'gasPrice': int(self.w3.eth.gas_price * 1.3),
-            'nonce': self.w3.eth.get_transaction_count(self.address)
-        })
+        ).functions.startActions(playerID, _queuedActions, _queuedStatus)
         
-        print(a["gas"])
-        print(a["gasPrice"])
-        # print(a['data'])
-        
-        
-        
-        signed_tx = self.w3.eth.account.sign_transaction(a, private_key=self.private_key)
+        gas = int(a.estimate_gas({ 'from': self.address }) * 1.2)
+        try:
+            a = a.build_transaction({
+                'from': self.address,
+                'gasPrice': int(self.w3.eth.gas_price),
+                'gas': gas,
+                'nonce': self.w3.eth.get_transaction_count(self.address)
+            })
+        except Exception as err:
+            print(f'{self.address} | Transaction failed | {err}')
+            return None
+
+        signed_tx = self.w3.eth.account.sign_transaction(a, self.private_key)
         tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
-        if receipt:
-            print('Transaction successfull')
-            print(tx_hash.hex)
+        return tx_hash
+    
+    def verify_tx(self, tx_hash)->bool:
+        try:
+            data = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=200)
+            if 'status' in data and data['status'] == 1:
+                print(f'{self.address} | transaction was successful: {tx_hash.hex()}')
+                return True
+            else:
+                print(f'{self.address} | transaction failed {data["transactionHash"].hex()}')
+                return False
+        except Exception as err:
+            print(f'{self.address} | unexpected error in <verif_tx> function: {err}')
+            return False
